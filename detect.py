@@ -1,8 +1,11 @@
+import sys
 import cv2
+# import utils
+
 from tflite_support.task import core
 from tflite_support.task import processor
 from tflite_support.task import vision
-import utils
+from centroid_tracker import CentroidTracker
 
 
 def initialize_camera(camera_id, width, height):
@@ -23,7 +26,7 @@ def initialize_detector(model_path, num_threads, enable_edgetpu):
     return detector
 
 
-def process_frame(cap, detector):
+def process_frame(cap, detector, tracker):
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -36,10 +39,30 @@ def process_frame(cap, detector):
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         input_tensor = vision.TensorImage.create_from_array(rgb_image)
 
-        detection_result = detector.detect(input_tensor)
-        image = utils.visualize(image, detection_result)
+        detection_result = detector.detect(input_tensor).detections
 
-        # Display FPS (same as before)
+        if not detection_result:
+            continue
+
+        objects = []
+
+        for detection in detection_result:
+            bounding_box = [detection.bounding_box.origin_x,
+                            detection.bounding_box.origin_y,
+                            detection.bounding_box.origin_x + detection.bounding_box.width,
+                            detection.bounding_box.origin_y + detection.bounding_box.height]
+            startX, startY, endX, endY = bounding_box
+            cX = int((startX + endX) / 2.0)
+            cY = int((startY + endY) / 2.0)
+            objects.append((cX, cY, startX, startY, endX, endY))
+
+        tracked_objects = tracker.update(objects)
+
+        for (objectID, centroid) in tracked_objects.items():
+            text = "ID {}".format(objectID)
+            cv2.putText(image, text, (centroid[0] - 10, centroid[1] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.circle(image, (centroid[0], centroid[1]), 4, (0, 255, 0), -1)
 
         if cv2.waitKey(1) == 27:
             break
@@ -58,7 +81,11 @@ def run():
 
     cap = initialize_camera(camera_id, width, height)
     detector = initialize_detector(model_path, num_threads, enable_edgetpu)
-    process_frame(cap, detector)
+
+    maxDisappeared = 50
+    tracker = CentroidTracker(maxDisappeared)
+
+    process_frame(cap, detector, tracker)
 
 
 if __name__ == '__main__':
