@@ -41,7 +41,7 @@ def process_frame(cap, detector, line_params):
 
         image = cv2.flip(image, 1)
 
-        initialize_tracker_line(image, line_params)
+        # initialize_tracker_line(image, line_params)
 
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         input_tensor = vision.TensorImage.create_from_array(rgb_image)
