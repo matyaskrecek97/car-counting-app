@@ -3,6 +3,7 @@ import cv2
 from tflite_support.task import core
 from tflite_support.task import processor
 from tflite_support.task import vision
+from tracker import EuclideanDistTracker
 import utils
 
 
@@ -29,8 +30,9 @@ def initialize_tracker_line(image, line_params):
              (line_params['end_x'], line_params['end_y']), (0, 255, 0), 2)
 
 
-def process_frame(cap, detector, line_params):
+def process_frame(cap, detector, line_params, tracker):
     count = 0
+    counted_ids = set()
 
     while cap.isOpened():
         success, image = cap.read()
@@ -50,6 +52,23 @@ def process_frame(cap, detector, line_params):
 
         image = utils.visualize(image, detection_result, ["car"])
 
+        # Extract bounding box coordinates from detection result
+        objects_rect = []
+        for detection in detection_result.detections:
+            bbox = detection.bounding_box
+            objects_rect.append((int(bbox.origin_x), int(
+                bbox.origin_y), int(bbox.width), int(bbox.height)))
+
+        # Update object tracker
+        objects_bbs_ids = tracker.update(objects_rect)
+
+        # Count cars based on objects_bbs_ids result
+        for obj_bb_id in objects_bbs_ids:
+            x, y, w, h, object_id = obj_bb_id
+            if object_id not in counted_ids:
+                counted_ids.add(object_id)
+                count += 1
+
         # Display the count
         cv2.putText(image, f'Count: {count}', (10, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -63,11 +82,13 @@ def process_frame(cap, detector, line_params):
 
 
 def run():
-    camera_id = 0
+    # camera_id = 0
+    camera_id = 'sample_video_resized.mp4'
     width, height = 640, 480
     num_threads = 4
     enable_edgetpu = False
     model_path = 'efficientdet_lite0.tflite'
+    tracker = EuclideanDistTracker()
 
     cap = initialize_camera(camera_id, width, height)
     detector = initialize_detector(model_path, num_threads, enable_edgetpu)
@@ -79,7 +100,7 @@ def run():
         'end_y': height
     }
 
-    process_frame(cap, detector, custom_line_params)
+    process_frame(cap, detector, custom_line_params, tracker)
 
 
 if __name__ == '__main__':
