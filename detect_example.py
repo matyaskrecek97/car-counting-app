@@ -1,3 +1,4 @@
+import sys
 import cv2
 from tflite_support.task import core
 from tflite_support.task import processor
@@ -23,7 +24,14 @@ def initialize_detector(model_path, num_threads, enable_edgetpu):
     return detector
 
 
-def process_frame(cap, detector):
+def initialize_tracker_line(image, line_params):
+    cv2.line(image, (line_params['start_x'], line_params['start_y']),
+             (line_params['end_x'], line_params['end_y']), (0, 255, 0), 2)
+
+
+def process_frame(cap, detector, line_params):
+    count = 0
+
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -33,11 +41,18 @@ def process_frame(cap, detector):
 
         image = cv2.flip(image, 1)
 
+        initialize_tracker_line(image, line_params)
+
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         input_tensor = vision.TensorImage.create_from_array(rgb_image)
 
         detection_result = detector.detect(input_tensor)
+
         image = utils.visualize(image, detection_result)
+
+        # Display the count
+        cv2.putText(image, f'Count: {count}', (10, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         if cv2.waitKey(1) == 27:
             break
@@ -56,7 +71,15 @@ def run():
 
     cap = initialize_camera(camera_id, width, height)
     detector = initialize_detector(model_path, num_threads, enable_edgetpu)
-    process_frame(cap, detector)
+
+    custom_line_params = {
+        'start_x': width // 2,
+        'start_y': 0,
+        'end_x': width // 2,
+        'end_y': height
+    }
+
+    process_frame(cap, detector, custom_line_params)
 
 
 if __name__ == '__main__':
