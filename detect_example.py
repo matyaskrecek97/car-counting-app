@@ -48,7 +48,7 @@ def process_frame(cap, detector, line_params):
 
         detection_result = detector.detect(input_tensor)
 
-        image = utils.visualize(image, detection_result)
+        image = utils.visualize(image, detection_result, ["car"])
 
         # Display the count
         cv2.putText(image, f'Count: {count}', (10, 50),
