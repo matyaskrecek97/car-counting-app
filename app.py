@@ -1,10 +1,12 @@
+import threading
 import sys
 import cv2
+import utils
 from tflite_support.task import core
 from tflite_support.task import processor
 from tflite_support.task import vision
 from tracker import EuclideanDistTracker
-import utils
+from event_sender import EventSender
 
 
 def initialize_camera(camera_id, width, height):
@@ -25,13 +27,8 @@ def initialize_detector(model_path, num_threads, enable_edgetpu):
     return detector
 
 
-def initialize_tracker_line(image, line_params):
-    cv2.line(image, (line_params['start_x'], line_params['start_y']),
-             (line_params['end_x'], line_params['end_y']), (0, 255, 0), 2)
-
-
-def process_frame(cap, detector, line_params, tracker):
-    count = 0
+def process_frame(cap, detector, tracker, roi, sender):
+    #  count = 0
     counted_ids = set()
 
     while cap.isOpened():
@@ -43,7 +40,9 @@ def process_frame(cap, detector, line_params, tracker):
 
         image = cv2.flip(image, 1)
 
-        # initialize_tracker_line(image, line_params)
+        # Define the ROI (Region of Interest)
+        cv2.rectangle(image, (roi[0], roi[1]),
+                      (roi[2], roi[3]), (0, 255, 0), 2)
 
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         input_tensor = vision.TensorImage.create_from_array(rgb_image)
@@ -66,12 +65,13 @@ def process_frame(cap, detector, line_params, tracker):
         for obj_bb_id in objects_bbs_ids:
             x, y, w, h, object_id = obj_bb_id
             if object_id not in counted_ids:
-                counted_ids.add(object_id)
-                count += 1
+                cx = (x + x + w) // 2
+                cy = (y + y + h) // 2
 
-        # Display the count
-        cv2.putText(image, f'Count: {count}', (10, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                # Count if the object is within the ROI
+                if roi[0] <= cx <= roi[2] and roi[1] <= cy <= roi[3]:
+                    counted_ids.add(object_id)
+                    sender.send_detection_event()
 
         if cv2.waitKey(1) == 27:
             break
@@ -88,18 +88,27 @@ def run():
     enable_edgetpu = False
     model_path = 'efficientdet_lite0.tflite'
     tracker = EuclideanDistTracker()
+    sender = EventSender()
 
     cap = initialize_camera(camera_id, width, height)
     detector = initialize_detector(model_path, num_threads, enable_edgetpu)
 
-    custom_line_params = {
-        'start_x': width // 2,
-        'start_y': 0,
-        'end_x': width // 2,
-        'end_y': height
-    }
+    # Define ROI as a square in the center
+    roi_size = 400  # Adjust as needed
+    roi_x1 = (width - roi_size) // 2
+    # roi_y1 = (height - roi_size) // 2
+    roi_y1 = 500
+    roi_x2 = roi_x1 + roi_size
+    roi_y2 = roi_y1 + roi_size
+    roi = (roi_x1, roi_y1, roi_x2, roi_y2)
 
-    process_frame(cap, detector, custom_line_params, tracker)
+    # Create a thread for the heartbeat
+    heartbeat_thread = threading.Thread(target=sender.start_hearbeat)
+    # Set the thread as a daemon so it exits when the main thread exits
+    heartbeat_thread.daemon = True
+    heartbeat_thread.start()
+
+    process_frame(cap, detector, tracker, roi, sender)
 
 
 if __name__ == '__main__':

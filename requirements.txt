@@ -3,6 +3,6 @@ numpy>=1.20.0
 opencv-python~=4.5.3.56
 paho-mqtt==1.6.1
 protobuf>=3.18.0,<4
+requests==2.31.0
 scipy>=1.11.2
 tflite-support>=0.4.2
-
