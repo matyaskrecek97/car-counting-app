@@ -28,8 +28,9 @@ def initialize_detector(model_path, num_threads, enable_edgetpu):
 
 
 def process_frame(cap, detector, tracker, roi, sender):
-    #  count = 0
     counted_ids = set()
+    clear_interval = 1000
+    frame_count = 0
 
     while cap.isOpened():
         success, image = cap.read()
@@ -72,6 +73,12 @@ def process_frame(cap, detector, tracker, roi, sender):
                 if roi[0] <= cx <= roi[2] and roi[1] <= cy <= roi[3]:
                     counted_ids.add(object_id)
                     sender.send_detection_event()
+
+        frame_count += 1
+
+        # Clear the counted_ids after clear_interval frames
+        if frame_count % clear_interval == 0:
+            counted_ids.clear()
 
         if cv2.waitKey(1) == 27:
             break
